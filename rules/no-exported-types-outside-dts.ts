@@ -1,5 +1,6 @@
 import { TSESTree } from '@typescript-eslint/utils';
 import { createRule } from '../utils/createRule';
+import { minimatch } from 'minimatch';
 import * as path from 'path';
 
 type Options = [{
@@ -28,7 +29,7 @@ export default createRule<Options, MessageIds>({
             items: {
               type: 'string',
             },
-            description: 'Array of file patterns where type exports are allowed (e.g., "*.d.ts", "*.types.ts")',
+            description: 'Array of file patterns where type exports are allowed (supports gitignore-style patterns)',
           },
           allowedTypeSuffixes: {
             type: 'array',
@@ -51,19 +52,48 @@ export default createRule<Options, MessageIds>({
     const allowedFilePatterns = options.allowedFilePatterns || ['*.d.ts'];
     const allowedTypeSuffixes = options.allowedTypeSuffixes || ['Props'];
     
-    // Check if current file matches any allowed pattern
-    const isFileAllowed = allowedFilePatterns.some(pattern => {
-      // Convert glob-like pattern to regex
-      const regexPattern = pattern
-        .replace(/\./g, '\\.')
-        .replace(/\*/g, '.*')
-        .replace(/\?/g, '.');
-      
-      const regex = new RegExp(`${regexPattern}$`);
-      return regex.test(filename) || regex.test(path.basename(filename));
-    });
+    // Normalize the filename to use forward slashes for consistent matching
+    const normalizedFilename = filename.replace(/\\/g, '/');
     
-    if (isFileAllowed) return {};
+    // Separate positive and negative patterns
+    const positivePatterns = allowedFilePatterns.filter(p => !p.startsWith('!'));
+    const negativePatterns = allowedFilePatterns.filter(p => p.startsWith('!')).map(p => p.slice(1));
+    
+    // Check if current file matches any allowed pattern
+    const isFileAllowed = () => {
+      // First check if it matches any positive pattern
+      const matchesPositive = positivePatterns.some(pattern => {
+        // Try matching against the full path
+        if (minimatch(normalizedFilename, pattern)) {
+          return true;
+        }
+        // Also try matching against just the basename for patterns like "*.d.ts"
+        if (!pattern.includes('/') && minimatch(path.basename(normalizedFilename), pattern)) {
+          return true;
+        }
+        return false;
+      });
+      
+      if (!matchesPositive) {
+        return false;
+      }
+      
+      // Then check if it's excluded by any negative pattern
+      const matchesNegative = negativePatterns.some(pattern => {
+        if (minimatch(normalizedFilename, pattern)) {
+          return true;
+        }
+        // Also try matching against just the basename
+        if (!pattern.includes('/') && minimatch(path.basename(normalizedFilename), pattern)) {
+          return true;
+        }
+        return false;
+      });
+      
+      return !matchesNegative;
+    };
+    
+    if (isFileAllowed()) return {};
     
     // Check if type name ends with any allowed suffix
     const isTypeAllowed = (typeName: string): boolean => {
@@ -81,7 +111,7 @@ export default createRule<Options, MessageIds>({
             data: { 
               kind: 'interface', 
               name: node.id.name,
-              patterns: allowedFilePatterns.join(', '),
+              patterns: positivePatterns.join(', '),
             },
           });
         }
@@ -96,7 +126,7 @@ export default createRule<Options, MessageIds>({
             data: { 
               kind: 'type', 
               name: node.id.name,
-              patterns: allowedFilePatterns.join(', '),
+              patterns: positivePatterns.join(', '),
             },
           });
         }

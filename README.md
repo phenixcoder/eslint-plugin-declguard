@@ -83,7 +83,10 @@ module.exports = {
         '*.types.ts',
         '*.types.tsx',
         'types/*',
-        '**/types.ts'
+        '**/types.ts',
+        'src/lib/**/*.ts',        // Allow all types in src/lib
+        '!src/lib/vendor/**/*',   // But exclude vendor subdirectory
+        'packages/*/types/**/*'   // Types in any package's types folder
       ],
       allowedTypeSuffixes: [
         'Props',
@@ -99,13 +102,15 @@ module.exports = {
 ### Configuration Options
 
 - **`allowedFilePatterns`** (string[]): Array of file patterns where type exports are allowed
-  - Supports simple glob patterns (`*` matches any characters, `?` matches single character)
+  - Supports gitignore-style glob patterns (powered by minimatch)
+  - Use `!` prefix for negation/exclusion patterns
+  - Patterns can include paths: `src/lib/**/*.ts`, `packages/*/types/*`
   - Default: `['*.d.ts']`
 
 - **`allowedTypeSuffixes`** (string[]): Array of suffixes that allow types to be exported from any file
   - Default: `['Props']`
 
-### Custom Configuration Examples
+### Pattern Matching Examples
 
 With the custom configuration above:
 
@@ -116,12 +121,47 @@ export interface ButtonStyle { ... }        // ✅ File matches *.types.ts
 // src/types/user.ts
 export type User = { ... }                  // ✅ File in types/ directory
 
+// src/lib/api/client.ts
+export interface ApiClient { ... }          // ✅ Matches src/lib/**/*.ts
+
+// src/lib/vendor/third-party.ts
+export type VendorType = { ... }            // ❌ Excluded by !src/lib/vendor/**/*
+
+// packages/ui/types/theme.ts
+export interface Theme { ... }              // ✅ Matches packages/*/types/**/*
+
 // src/components/Button.tsx
 export type ButtonConfig = { ... }          // ✅ Type ends with Config
 export interface ModalInterface { ... }     // ✅ Type ends with Interface
 
 // src/utils/helpers.ts
 export type Helper = { ... }                // ❌ Not allowed pattern
+```
+
+### Advanced Path-Based Configuration
+
+For projects with complex directory structures, you can use path-based patterns to control where types can be exported:
+
+```js
+allowedFilePatterns: [
+  // Standard type file patterns
+  '*.d.ts',
+  '*.types.ts',
+  
+  // Allow types in specific directories
+  'src/shared/**/*.ts',           // All files in shared folder
+  'src/api/types/**/*',           // API type definitions
+  'packages/*/src/types/**/*',    // Types in monorepo packages
+  
+  // Exclude certain subdirectories
+  'src/lib/**/*.ts',              // Allow in lib folder...
+  '!src/lib/generated/**/*',      // ...but not in generated subfolder
+  '!src/lib/vendor/**/*',         // ...and not in vendor subfolder
+  
+  // Match specific file names
+  '**/constants.ts',              // Any constants.ts file
+  '**/enums.ts',                  // Any enums.ts file
+]
 ```
 
 ---
